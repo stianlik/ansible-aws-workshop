@@ -1,5 +1,13 @@
 # Ansible AWS workshop
 
+I denne workshoppen skal vi konfigurere et AWS-oppsett bestående
+av:
+
+- [Virtual Private Cloud (VPC)](https://aws.amazon.com/vpc/) med to subnett
+- Jump server for sikker tilkobling til VPC
+- Lastbalanserer
+- Autoscaling group med to web-tjenere
+
 ## Oppgave 1: Oppsett
 
 Installer [Ansible](http://ansible.com/) og [Boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.html).
@@ -33,10 +41,39 @@ Ansible bruker [boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.htm
     aws_access_key_id = <your_access_key_here>
     aws_secret_access_key = <your_secret_key_here>
 
-## Oppgave 2: VPC
+## Oppgave 1: Playbook
+
+Opprett en ny [playbook.](http://docs.ansible.com/ansible/playbooks_intro.html) med filnavn `playbook.yml` og følgende innhold:
+
+```yaml
+---
+- hosts: localhost
+  tasks:
+  - debug:
+      msg: Da er vi igang
+```
+
+Sjekk at playbook fungerer ved å kjøre
+
+```Shell
+ansible-playbook playbook.yml
+```
+
+## Oppgave 3: VPC
 
 Vi begynner med å lage en [VPC i Ansible](http://docs.ansible.com/ansible/ec2_vpc_module.html).
 Bruk `10.0.0.0/16` som `cidr_block`, og tag med `ansible-workshop` som `Name`.
+
+```yaml
+- name: create vpc
+  ec2_vpc:
+    region: eu-central-1
+    state: present
+    cidr_block: 10.0.0.0/16
+    resource_tags:
+      Name: ansible-workshop
+  register: vpc
+```
 
 For å sjekke hvilke endringer Ansible har tenkt til å gjøre, kjør [`ansible-playbook
 --check playbook.yml`](http://docs.ansible.com/ansible/playbooks_checkmode.html). Hvis alt ser riktig
@@ -56,7 +93,7 @@ subnettene. Id-en kan hentes ut med synaksen `{{ aws_vpc.vpc_id }}` etter at den
 er registrert med `register: aws_vpc`. Se [Variables](http://docs.ansible.com/ansible/playbooks_variables.html#registered-variables)
 for mer informasjon.
 
-## Oppgave 3: Sett opp subnet
+## Oppgave 4: Sett opp subnet
 
 Nå skal vi sette opp to [subnet i
 VPC-en](http://docs.ansible.com/ansible/ec2_vpc_subnet_module.htm) vår.
@@ -69,7 +106,7 @@ table](http://docs.ansible.com/ansible/ec2_vpc_route_table_module.html), og så
 assosiere tabellen med subnettet.
 Så man skal route `0.0.0.0/0` til internet gatewayen.
 
-## Oppgave 4
+## Oppgave 5
 
 Nå skal vi sette opp to webservere og en lastbalanserer til å serve innholdet
 ut på internet. Istedenfor å kjøre opp serverene manuelt, så lager vi en
@@ -77,7 +114,7 @@ autoscalinggroup for serverene. Prøve å lag all infrastrukturen i denne
 oppgaven inn i en [Ansible role](http://docs.ansible.com/ansible/playbooks_roles.html), ved å sende inn all
 informasjonen du trenger via inputs til modulen.
 
-### Oppgave 4.1: Lastbalanserer
+### Oppgave 5.1: Lastbalanserer
 
 For at lastbalanserer skal være tilgjengelig på nett, trenger den en [Security
 Group](https://www.terraform.io/docs/providers/aws/r/security_group.html) med
@@ -115,7 +152,7 @@ modulen, og fra hovedoppskriften. Når du kjører `terraform apply` skal du få 
 Prøv å gå på URL-en i browseren. Siden vi ikke har noen app som kjører skal du
 få en helt blank side, som returnerer 503 Service Unavailable.
 
-### Oppgave 4.2: Sikkerhet
+### Oppgave 5.2: Sikkerhet
 
 Siden vi har lyst til å logge inn på serverene for å sjekke at alt kom riktig
 opp, må vi lage et [Key
@@ -145,7 +182,7 @@ Husk å spesifisere VPC-ID på den nye Security Group-en, siden SG-er er
 tilordnet en VPC.
 
 
-### Oppgave 4.3: Launch configuration
+### Oppgave 5.3: Launch configuration
 
 An autoscaling group (AG) trenger en [Launch
 Configuration](https://www.terraform.io/docs/providers/aws/r/launch_configuration.html)
@@ -165,7 +202,7 @@ den måten så får man ikke feil når man endrer Launch Configuration.
 **NB!** Ikke glem å legg til keypair og Security group.
 
 
-### Oppgave 4.4: Auto-scaling group
+### Oppgave 5.4: Auto-scaling group
 
 Helt til slutt skal vi lage en [auto-scaling
 group](https://www.terraform.io/docs/providers/aws/r/autoscaling_group.html)
