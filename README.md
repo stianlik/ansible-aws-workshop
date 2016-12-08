@@ -1,97 +1,80 @@
-# terraform-workshop
-
-## Agenda
-
-* Introduksjon
-  * Hvordan funker Terraform
-  * Provider (vi bruker AWS)
-  * State-fil (eller lagre annet sted)
-  * Resources
-  * Varibler og referanser
-  * Moduler
-    * Bruk
-    * Input
-    * Output
-  * Provisioners
-
+# Ansible AWS workshop
 
 ## Oppgave 1: Oppsett
 
-Her skal vi sette opp Terraform for å bruke den med AWS.
+Installer [Ansible](http://ansible.com/) og [Boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.html).
+
+    pip install ansible
+    pip install boto
 
 Gå inn i AWS-konsollet, og generer en "Access Key" på brukeren din. Gå inn i
 Identity and Access Management (IAM), finn brukeren din under "Users", velg
 Security Credentials, og "Create Access Key". Last ned fila, så du er sikker på
-å ikke miste keyene.
+å ikke miste nøklene.
 
 Hvis du bruker din egen konto, lag en bruker under "Users" først, og gi
 brukeren nødvendig tilganger (man kan godt bruke full admin i workshoppen).
 
-Neste steg er å sette opp miljøvariabler med Access Key-en, slik at Terraform
+Neste steg er å sette opp miljøvariabler med Access Key-en, slik at Ansible
 kan logge seg på AWS.  Dette gjøres ved å sette `AWS_ACCESS_KEY_ID` og
 `AWS_SECRET_ACCESS_KEY`. Dette kan enten gjøres ved å legge det inn i
-`.bashrc`, eller ved å kjøre export-kommandoene i shellet du bruker.
+`.bashrc`, ved å kjøre export-kommandoene i shellet du bruker, eller ved konfigurere
+[Boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.html) med `~/.boto`.
 
 ```bash
 export AWS_ACCESS_KEY_ID="<din access key>"
 export AWS_SECRET_ACCESS_KEY="<din secret key>"
 ```
 
+Ansible bruker [boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.html) til
+å kommunisere med AWS. Det er derfor også mulig å spesifisere nøklene i filen `~/.boto`.
+
+    [Credentials]
+    aws_access_key_id = <your_access_key_here>
+    aws_secret_access_key = <your_secret_key_here>
+
 ## Oppgave 2: VPC
 
-Det første man må gjøre er å definere opp en [provider for
-AWS.](https://www.terraform.io/docs/providers/aws/index.html). Her kan man
-sette opp hvilken region man vil ha som default.
+Vi begynner med å lage en [VPC i Ansible](http://docs.ansible.com/ansible/ec2_vpc_module.html).
+Bruk `10.0.0.0/16` som `cidr_block`, og tag med `ansible-workshop` som `Name`.
 
-Vi begynner med å lage en [VPC i Terraform](https://www.terraform.io/docs/providers/aws/r/vpc.html).
-Bruk `10.0.0.0/16` som `cidr_block`, og tag med ditt eget navn som `Name`, så
-blir det lettere å vite hvem som eier hvilken VPC. Vi har en limit på 5 VPC-er
-per region, så velg en region i USA eller Frankfurt (hvis du ikke bruker din
-egen konto).
-
-For å sjekke hvilke endringer Terraform har tenkt til å gjøre, kjør [`terraform
-plan`](https://www.terraform.io/docs/commands/plan.html). Hvis alt ser riktig
-ut, bruk [`terraform apply`](https://www.terraform.io/docs/commands/apply.html)
+For å sjekke hvilke endringer Ansible har tenkt til å gjøre, kjør [`ansible-playbook
+--check playbook.yml`](http://docs.ansible.com/ansible/playbooks_checkmode.html). Hvis alt ser riktig
+ut, bruk [`ansible-playbook playbook.yml`](http://docs.ansible.com/ansible/playbooks.html)
 for å utfør endringene.
 
-Instansene må også ha mulighet til å koble seg til internett. For å få tilgang
-til internett trenger vi en [Internet
-Gateway](https://www.terraform.io/docs/providers/aws/r/internet_gateway.html).
-Sett opp en slike gateway.
+Instansene må også ha mulighet til å koble seg til Internett. For å få tilgang
+til Internett trenger vi en [Internet
+Gateway](http://docs.ansible.com/ansible/ec2_vpc_igw_module.html).
+Sett opp en slike gateway. Tips: Se over mulige parametre for `ec2_vpc`-modulen før
+du starter med `ec2_vpc_igw`.
 
 Ved å refere til
-[VPC-en](https://www.terraform.io/docs/providers/aws/r/vpc.html) definert
+[VPC-en](http://docs.ansible.com/ansible/ec2_vpc_subnet_module.html) definert
 tidligere, kan man hente ut ID-en, og bruke den når man definerer opp
-subnettene. Id-en kan hentes ut med synaksen `${aws_vpc.navn.id}`. Se
-[Interpolation](https://www.terraform.io/docs/configuration/interpolation.html)
+subnettene. Id-en kan hentes ut med synaksen `{{ aws_vpc.vpc_id }}` etter at den
+er registrert med `register: aws_vpc`. Se [Variables](http://docs.ansible.com/ansible/playbooks_variables.html#registered-variables)
 for mer informasjon.
 
 ## Oppgave 3: Sett opp subnet
 
 Nå skal vi sette opp to [subnet i
-VPC-en](https://www.terraform.io/docs/providers/aws/r/subnet.html) vår. Husk å
-sette `map_public_ip_on_launch` til true, så maskinene i subnettet får public
-IP. Vi kommer bare til å kjøre to subnet i denne workshoppen, og ikke fire som
-har gjort tidligere. La vært subnet være i hver sin `availability_zone`. La et
+VPC-en](http://docs.ansible.com/ansible/ec2_vpc_subnet_module.htm) vår.
+La vært subnet være i hver sin `availability_zone`. La et
 subnet bruke `cidr_block` `10.0.1.0/24` og det andre bruke `10.0.2.0/24`.
-
-Pass også på å legge på en tag på subnettene, så du vet hvilke som er dine.
 
 For at maskiner på subnettet skal kunne koble seg til internett trenger man å
 lage en [route
-table](https://www.terraform.io/docs/providers/aws/r/route_table.html), og så
-[assosiere tabellen med
-subnettet](https://www.terraform.io/docs/providers/aws/r/route_table_association.html).
-Så man skal route `0.0.0.0/0` til internet gatewayen. Sett `gateway_id` i en
-`route` til ID-en til Internet Gateway-en du lagde i forrige oppgave.
+table](http://docs.ansible.com/ansible/ec2_vpc_route_table_module.html), og så
+assosiere tabellen med subnettet.
+Så man skal route `0.0.0.0/0` til internet gatewayen.
 
 ## Oppgave 4
 
 Nå skal vi sette opp to webservere og en lastbalanserer til å serve innholdet
 ut på internet. Istedenfor å kjøre opp serverene manuelt, så lager vi en
 autoscalinggroup for serverene. Prøve å lag all infrastrukturen i denne
-oppgaven inn i en [Terraform
-modul](https://www.terraform.io/docs/modules/create.html), ved å sende inn all
+oppgaven inn i en [Ansible role](http://docs.ansible.com/ansible/playbooks_roles.html), ved å sende inn all
 informasjonen du trenger via inputs til modulen.
 
 ### Oppgave 4.1: Lastbalanserer

@@ -1,0 +1,173 @@
+---
+- hosts: localhost
+
+  pre_tasks:
+  - include_vars: vars.yml
+
+  tasks:
+
+  - name: create ec2 key
+    ec2_key:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      region: eu-central-1
+      name: jump_key
+      key_material: "{{ item }}"
+    with_file: id_rsa.pub
+
+  - name: create vpc
+    ec2_vpc:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      region: eu-central-1
+      state: present
+      cidr_block: 10.0.0.0/16
+      resource_tags:
+        Name: ansible-cloud-workshop
+      internet_gateway: true
+      subnets:
+      - cidr: 10.0.1.0/24
+        az: eu-central-1a
+        resource_tags:
+          Name: ansible-cloud-workshop-subnet-1
+      - cidr: 10.0.2.0/24
+        az: eu-central-1b
+        resource_tags:
+          Name: ansible-cloud-workshop-subnet-1
+      route_tables:
+      - subnets:
+        - 10.0.1.0/24
+        - 10.0.2.0/24
+        routes:
+        - dest: 0.0.0.0/0
+          gw: igw
+    register: vpc
+
+  - name: create load balancer security group
+    ec2_group:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      region: eu-central-1
+      vpc_id: "{{ vpc.vpc_id }}"
+      name: ansible-cloud-workshop-lb-security-group
+      description: Load balancer
+      rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        cidr_ip: 0.0.0.0/0
+      rules_egress:
+      - proto: -1
+        from_port: 0
+        to_port: 0
+        cidr_ip: 0.0.0.0/0
+    register: load_balancer_group
+
+  - name: create jump server security group
+    ec2_group:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      region: eu-central-1
+      vpc_id: "{{ vpc.vpc_id }}"
+      name: ansible-cloud-workshop-js-security-group
+      description: Jump server
+      rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        group_name: ansible-cloud-workshop-lb-security-group
+      - proto: tcp
+        from_port: 22
+        to_port: 22
+        cidr_ip: 0.0.0.0/0
+
+  - name: create jump server
+    ec2:
+      id: ansible-cloud-workshop-js
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      region: eu-central-1
+      key_name: jump_key
+      instance_type: t2.micro
+      image: ami-f9619996
+      wait: yes
+      group: ansible-cloud-workshop-js-security-group
+      count: 1
+      vpc_subnet_id: "{{ vpc.subnets[0].id }}"
+      assign_public_ip: yes
+      instance_tags:
+        Name: jump-server
+
+  - name: create web service security group
+    ec2_group:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      region: eu-central-1
+      vpc_id: "{{ vpc.vpc_id }}"
+      name: ansible-cloud-workshop-ws-security-group
+      description: Web service
+      rules:
+      - proto: tcp
+        from_port: 80
+        to_port: 80
+        group_name: ansible-cloud-workshop-lb-security-group
+    register: webservice_group
+
+  - name: configure load balancer
+    ec2_elb_lb:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      wait: no
+      security_group_names:
+      - ansible-cloud-workshop-lb-security-group
+      region: eu-central-1
+      state: present
+      name: ansible-cloud-workshop-lb
+      health_check:
+        ping_protocol: http
+        ping_port: 80
+        response_timeout: 5
+        interval: 30
+        unhealthy_threshold: 2
+        healthy_threshold: 10
+        ping_path: "/healthcheck.txt"
+      subnets:
+      - "{{ vpc.subnets[0].id }}"
+      - "{{ vpc.subnets[1].id }}"
+      listeners:
+      - protocol: http
+        load_balancer_port: 80
+        instance_port: 80
+
+  - name: configure launch configuration for autoscaling group
+    ec2_lc:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      name: ansible-cloud-workshop-config
+      region: eu-central-1
+      image_id: ami-f9619996
+      instance_type: t2.micro
+      state: present
+      user_data: "{{ lookup('file', 'startup.sh') }}"
+      assign_public_ip: yes
+      security_groups:
+      - "{{ webservice_group.group_id }}"
+
+  - name: create autoscaling group
+    ec2_asg:
+      aws_access_key: "{{ aws_access_key }}"
+      aws_secret_key: "{{ aws_secret_key }}"
+      name: ansible-cloud-workshop-ag
+      region: eu-central-1
+      load_balancers:
+      - ansible-cloud-workshop-lb
+      availability_zones:
+      - eu-central-1a
+      - eu-central-1b
+      launch_config_name: ansible-cloud-workshop-config
+      min_size: 1
+      max_size: 3
+      desired_capacity: 1
+      vpc_zone_identifier:
+      - "{{ vpc.subnets[0].id }}"
+      - "{{ vpc.subnets[1].id }}"
