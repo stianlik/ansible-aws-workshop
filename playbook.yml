@@ -56,11 +56,6 @@
         from_port: 80
         to_port: 80
         cidr_ip: 0.0.0.0/0
-      rules_egress:
-      - proto: -1
-        from_port: 0
-        to_port: 0
-        cidr_ip: 0.0.0.0/0
     register: load_balancer_group
 
   - name: create jump server security group

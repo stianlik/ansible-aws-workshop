@@ -3,10 +3,11 @@
 I denne workshoppen skal vi konfigurere et AWS-oppsett bestående
 av:
 
-- [Virtual Private Cloud (VPC)](https://aws.amazon.com/vpc/) med to subnett
+- [Virtual Private Cloud (VPC)](https://aws.amazon.com/vpc/) med to subnet
 - Jump server for sikker tilkobling til VPC
 - Lastbalanserer
 - Autoscaling group med to web-tjenere
+- Sikkerhetsgrupper for å styre tilgang til tjenestene
 
 ## Oppgave 1: Oppsett
 
@@ -15,10 +16,9 @@ Installer [Ansible](http://ansible.com/) og [Boto](http://boto.cloudhackers.com/
     pip install ansible
     pip install boto
 
-Gå inn i AWS-konsollet, og generer en "Access Key" på brukeren din. Gå inn i
+Gå inn i AWS-konsollet og generer en "Access Key" på brukeren din. Gå inn i
 Identity and Access Management (IAM), finn brukeren din under "Users", velg
-Security Credentials, og "Create Access Key". Last ned fila, så du er sikker på
-å ikke miste nøklene.
+Security Credentials, og "Create Access Key". Last ned filen, så du er sikker på å ikke miste nøklene.
 
 Hvis du bruker din egen konto, lag en bruker under "Users" først, og gi
 brukeren nødvendig tilganger (man kan godt bruke full admin i workshoppen).
@@ -26,7 +26,7 @@ brukeren nødvendig tilganger (man kan godt bruke full admin i workshoppen).
 Neste steg er å sette opp miljøvariabler med Access Key-en, slik at Ansible
 kan logge seg på AWS.  Dette gjøres ved å sette `AWS_ACCESS_KEY_ID` og
 `AWS_SECRET_ACCESS_KEY`. Dette kan enten gjøres ved å legge det inn i
-`.bashrc`, ved å kjøre export-kommandoene i shellet du bruker, eller ved konfigurere
+`.bashrc`, ved å kjøre export-kommandoene i shellet du bruker, eller ved å konfigurere
 [Boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.html) med `~/.boto`.
 
 ```bash
@@ -43,7 +43,7 @@ Ansible bruker [boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.htm
 
 ## Oppgave 1: Playbook
 
-Opprett en ny [playbook.](http://docs.ansible.com/ansible/playbooks_intro.html) med filnavn `playbook.yml` og følgende innhold:
+Ansible bruker playbooks til å spesifisere konfigurasjon, utrulling og orkestrering. Opprett en ny [playbook](http://docs.ansible.com/ansible/playbooks.html) med filnavn `playbook.yml` og følgende innhold:
 
 ```yaml
 ---
@@ -53,11 +53,7 @@ Opprett en ny [playbook.](http://docs.ansible.com/ansible/playbooks_intro.html) 
       msg: Da er vi igang
 ```
 
-Sjekk at playbook fungerer ved å kjøre
-
-```Shell
-ansible-playbook playbook.yml
-```
+Sjekk at playbook fungerer ved å kjøre `ansible-playbook playbook.yml`.
 
 ## Oppgave 3: VPC
 
@@ -65,13 +61,15 @@ Vi begynner med å lage en [VPC i Ansible](http://docs.ansible.com/ansible/ec2_v
 Bruk `10.0.0.0/16` som `cidr_block`, og tag med `ansible-workshop` som `Name`.
 
 ```yaml
-- name: create vpc
-  ec2_vpc:
-    region: eu-central-1
-    state: present
-    cidr_block: 10.0.0.0/16
-    resource_tags:
-      Name: ansible-workshop
+- hosts: localhost
+  tasks:
+  - name: create vpc
+    ec2_vpc:
+        region: eu-central-1
+        state: present
+        cidr_block: 10.0.0.0/16
+        resource_tags:
+          Name: ansible-workshop
   register: vpc
 ```
 
@@ -80,16 +78,15 @@ For å sjekke hvilke endringer Ansible har tenkt til å gjøre, kjør [`ansible-
 ut, bruk [`ansible-playbook playbook.yml`](http://docs.ansible.com/ansible/playbooks.html)
 for å utfør endringene.
 
-Instansene må også ha mulighet til å koble seg til Internett. For å få tilgang
-til Internett trenger vi en [Internet
+Instansene må også ha mulighet til å koble seg til Internett. For å få tilgang til Internett trenger vi en [Internet
 Gateway](http://docs.ansible.com/ansible/ec2_vpc_igw_module.html).
-Sett opp en slike gateway. Tips: Se over mulige parametre for `ec2_vpc`-modulen før
-du starter med `ec2_vpc_igw`.
+Sett opp en slike gateway. Tips: Internet gateway kan spesifiseres direkte
+i `ec2_vpc`-modulen.
 
 Ved å refere til
 [VPC-en](http://docs.ansible.com/ansible/ec2_vpc_subnet_module.html) definert
 tidligere, kan man hente ut ID-en, og bruke den når man definerer opp
-subnettene. Id-en kan hentes ut med synaksen `{{ aws_vpc.vpc_id }}` etter at den
+sikkerhetsgruppene. Id-en kan hentes ut med synaksen `"{{ aws_vpc.vpc_id }}"` ([Jinja2 template engine](http://jinja.pocoo.org/)) etter at den
 er registrert med `register: aws_vpc`. Se [Variables](http://docs.ansible.com/ansible/playbooks_variables.html#registered-variables)
 for mer informasjon.
 
@@ -97,90 +94,67 @@ for mer informasjon.
 
 Nå skal vi sette opp to [subnet i
 VPC-en](http://docs.ansible.com/ansible/ec2_vpc_subnet_module.htm) vår.
-La vært subnet være i hver sin `availability_zone`. La et
+La hvert subnet være i hver sin `availability_zone`. La et
 subnet bruke `cidr_block` `10.0.1.0/24` og det andre bruke `10.0.2.0/24`.
 
-For at maskiner på subnettet skal kunne koble seg til internett trenger man å
-lage en [route
-table](http://docs.ansible.com/ansible/ec2_vpc_route_table_module.html), og så
-assosiere tabellen med subnettet.
-Så man skal route `0.0.0.0/0` til internet gatewayen.
+For at maskiner på subnettet skal kunne koble seg til Internett må man lage en [rutingtabell](http://docs.ansible.com/ansible/ec2_vpc_route_table_module.html), og assosiere tabellen med subnettet. Opprett en rute `0.0.0.0/0` til internet gatewayen.
 
 ## Oppgave 5
 
 Nå skal vi sette opp to webservere og en lastbalanserer til å serve innholdet
-ut på internet. Istedenfor å kjøre opp serverene manuelt, så lager vi en
-autoscalinggroup for serverene. Prøve å lag all infrastrukturen i denne
-oppgaven inn i en [Ansible role](http://docs.ansible.com/ansible/playbooks_roles.html), ved å sende inn all
-informasjonen du trenger via inputs til modulen.
+ut på Internett. Istedenfor å kjøre opp serverene manuelt, så lager vi en
+autoscalinggroup for serverene.
 
 ### Oppgave 5.1: Lastbalanserer
 
-For at lastbalanserer skal være tilgjengelig på nett, trenger den en [Security
-Group](https://www.terraform.io/docs/providers/aws/r/security_group.html) med
-åpning inn (`ingress`) på port `80` med TCP mot alle IP-adress (`0.0.0.0/0`).
-Husk at du i Terraform også må legge til en regel med full åpning ut fra
-lastbalansereren også (`egress`). Husk å spesifisere VPC-ID på den nye Security
-Group-en, siden SG-er er tilordnet en VPC.
+For at lastbalanserer skal være tilgjengelig på nett, trenger den en [sikkerhetsgruppe](http://docs.ansible.com/ansible/ec2_group_module.html) med
+åpning inn på port `80` med TCP mot alle IP-adresser (`0.0.0.0/0`).
+Husk å spesifisere VPC-ID på den nye sikkerhetsgruppen, siden gruppen er tilordnet en VPC.
 
-```terraform
-    # Åpent ut mot alt
-    egress {
-        from_port = 0
-        to_port = 0
-        protocol = "-1"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
+```yaml
+- proto: tcp
+  from_port: 80
+  to_port: 80
+  cidr_ip: 0.0.0.0/0
 ```
 
 Vi begynner med å lage en
-[lastbalanserer](https://www.terraform.io/docs/providers/aws/r/elb.html) for
-webapplikasjonen. Lastbalansereren skal lytt på port `80`, og kjøre helsesjekk
+[lastbalanserer](http://docs.ansible.com/ansible/ec2_elb_lb_module.html) for
+webapplikasjonen. Lastbalansereren skal lytte på port `80`, og kjøre helsesjekk
 mot applikasjonen på port `80` på URL-en `/healthcheck.txt`. Applikasjonen
 kjører også på port `80`. Man må også definere hvilke subnet som
 lastbalansereren skal være koblet på. Bruk variabelreferanser til de subnettene
-vi definerte i den tidligere oppgaven.  Lister defineres slik i Terraform:
-`["${modul.navn.variabel}", "${modul.navn.variabel}"]`. Huske å definer opp en
-`listener`- og en `health_check`-blokk.
+vi definerte i den tidligere oppgaven. Huske å definere
+`listeners`, `health_check` og `security_group_names`.
 
-Husk å spesifisere `security_groups` når du oppretter lastbalansereren.
-
-Legg til adressen (DNS-navnet) til lastbalansereren som en
-[output](https://www.terraform.io/docs/configuration/outputs.html) både fra
-modulen, og fra hovedoppskriften. Når du kjører `terraform apply` skal du få ut URL-en til lastbalanseren helt til slutt.
-
-Prøv å gå på URL-en i browseren. Siden vi ikke har noen app som kjører skal du
+Kjør `ansible-playbook playbook.yml -vvv` for å informasjon om resultatet. Prøv å gå på URL-en i browseren. Siden vi ikke har noen app som kjører skal du
 få en helt blank side, som returnerer 503 Service Unavailable.
 
-### Oppgave 5.2: Sikkerhet
+### Oppgave 5.2: Jump server
 
 Siden vi har lyst til å logge inn på serverene for å sjekke at alt kom riktig
 opp, må vi lage et [Key
-Pair](https://www.terraform.io/docs/providers/aws/r/key_pair.html) først.
-Terraform støtter ikke å generere et nøkkelpar, så vi kan bruke kommandoen
-`ssh-keygen -f terraform-workshop`. Innholdet i `terraform-workshop.pub` skal da
-legges inn i feltet `public_key` i terraform-fila vår. Man kan enten kopiere
+Pair](https://www.terraform.io/docs/providers/aws/r/key_pair.html) med kommandoen
+`ssh-keygen -f id_rsa`. Innholdet i `id_rsa.pub` skal da
+legges inn i feltet `key_material` i [ec2](http://docs.ansible.com/ansible/ec2_module.html)-modulen. Man kan enten kopiere
 innholdet manuelt, eller bruke
-[`file()`](https://www.terraform.io/docs/configuration/interpolation.html#element_list_index_)-funksjonen
+[with_file](http://docs.ansible.com/ansible/playbooks_loops.html#looping-over-files)-attributten.
 
-Et tips kan være å kjøre `ssh-add terraform-workshop` for å slippe å
+Et tips kan være å kjøre `ssh-add id_rsa` for å slippe å
 spesifisere nøkkel når du skal prøve å logge deg inn på serverene senere.
 
-Vi må også sette opp en [Security
-Group](https://www.terraform.io/docs/providers/aws/r/security_group.html) for å
+Vi må også sette opp en [sikkerhetsgruppe](http://docs.ansible.com/ansible/ec2_group_module.html) for å
 kontrollere hvilke porter som er tilgjengelig. Maskinene vi skal sette opp
-trenger port `22` (så vi kan bruke SSH inn) tilgjengelig fra overalt
-(`0.0.0.0/0`), og port `80` (så lastbalansereren får tilgang til webappen)
+trenger port `22` (slik at vi kan bruke SSH inn) tilgjengelig fra overalt
+(`0.0.0.0/0`), og port `80` (slik at lastbalansereren får tilgang til webappen)
 tilgjengelig for lastbalansereren. Webappen skal kun være tilgjengelig for
 lastbalanseren, og ikke hele verden.  Man kan bruke en security group som
 source, istedenfor en IP-adresse i AWS. Tips er derfor å bruke
-[`source_security_group_id`](https://www.terraform.io/docs/providers/aws/r/elb.html#source_security_group_id)
-som er en variabel fra lastbalansereren, for å angi tilgang fra
+[`group_name`](http://docs.ansible.com/ansible/ec2_group_module.html) for å angi tilgang fra
 lastbalansereren uten å måtte oppgi IP.
 
 Husk å spesifisere VPC-ID på den nye Security Group-en, siden SG-er er
 tilordnet en VPC.
-
 
 ### Oppgave 5.3: Launch configuration
 
