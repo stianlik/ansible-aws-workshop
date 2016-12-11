@@ -153,39 +153,33 @@ source, istedenfor en IP-adresse i AWS. Tips er derfor å bruke
 [`group_name`](http://docs.ansible.com/ansible/ec2_group_module.html) for å angi tilgang fra
 lastbalansereren uten å måtte oppgi IP.
 
-Husk å spesifisere VPC-ID på den nye Security Group-en, siden SG-er er
-tilordnet en VPC.
+Husk å spesifisere VPC-ID på den nye sikkerhetsgruppen.
 
 ### Oppgave 5.3: Launch configuration
 
 An autoscaling group (AG) trenger en [Launch
-Configuration](https://www.terraform.io/docs/providers/aws/r/launch_configuration.html)
+Configuration](http://docs.ansible.com/ansible/ec2_lc_module.html)
 for å kunne vite hva slags type instancer som skal startes. `image_id` finner
 man ved å logge inn på AWS-konsollet, og begynne å starte en EC2 instans i
 regionen man bruker. Hver region har sine egne AMI-ider.
 
 Hvis man legger til et script i `user_data`, så blir dette kjørt når instansen
 kommer opp. Les inn innholdet fra `startup.sh` ved hjelp av
-[`file()`](https://www.terraform.io/docs/configuration/interpolation.html#element_list_index_)-funksjonen, og putt det inn i `user_data`-feltet.
+[`with_file`](http://docs.ansible.com/ansible/playbooks_loops.html#looping-over-files)-funksjonen, og putt det inn i `user_data`-feltet.
 
-Det kan også være en god ide å sette
-[create_bebfore_destroy](https://www.terraform.io/docs/configuration/resources.html#lifecycle)
-til `true`, siden man ikke kan endre Launch Configuration. Da vil Terraform
-lage en ny LC, oppdatere AG, og så lette den gamle LC igjen helt til slutt. På
-den måten så får man ikke feil når man endrer Launch Configuration.
-**NB!** Ikke glem å legg til keypair og Security group.
-
+*Merk at launch configuration ikke kan endres. For å endre en eksisterende konfigurasjon
+må det opprettes en ny launch configuration.*
 
 ### Oppgave 5.4: Auto-scaling group
 
 Helt til slutt skal vi lage en [auto-scaling
-group](https://www.terraform.io/docs/providers/aws/r/autoscaling_group.html)
+group](http://docs.ansible.com/ansible/ec2_asg_module.html)
 som skal kjøre opp maskinene våre. Vi skal ha to instanser basert på launch
 configuration fra forrige oppgave, fordelt på de to subnettene fra tidligere
 (via `vpc_zone_identifier`).  Husk også å spesifisere hvilken `load_balancer`
 som maskinene skal meldes inn i.
 
-Når du kjører `terraform apply` så auto-scaling groupen blir laget, så skal du
+Når du kjører `ansible-playbook playbook.yml` så auto-scaling groupen blir laget, så skal du
 AWS Console se at det starter opp to maskiner, og du vil etterhvert få opp en
 side i browseren hvis du går inn på URL-en til lastbalansereren.
 
@@ -194,8 +188,5 @@ AWS Console.
 
 ## Ferdig?
 
-Antagelig ikke helt. Fjern alt du har laget:
-
-```bash
-terraform destroy
-```
+Antagelig ikke helt. Fjern alt du har laget via AWS Console, eller ved å bruk
+av en playbook der du bruker `state`-attributten til å fjerne tjenester.
