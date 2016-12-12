@@ -29,9 +29,9 @@
           <h1>Agenda</h1>
 
           <ul>
-            <li>Introduksjon til oppgaven</li>
-            <li>Introduksjon til Ansible</li>
-			<li>Praktisk arbeid</li>
+            <li>Introduksjon (15.00 - 15.15)</li>
+			<li>Praktisk arbeid (15.15 - 1645)</li>
+			<li>Diskusjon (16.45 - 17.00)</li>
           </ul>
         </section>
 
@@ -61,153 +61,162 @@
         </section>
 
         <section>
-          <p><code>playbook.yml</code></p>
-        </section>
-
-
-        <section>
+			<p>Playbook</p>
           <pre><code class="hljs yaml" data-trim>
-- hosts: localhost
+- hosts: webservers
+  vars:
+    http_port: 80
+    max_clients: 200
   tasks:
-  - debug:
-      msg: Da er vi igang
+  - name: ensure apache is at the latest version
+    yum: name=httpd state=latest
+  - name: ensure apache is running (and enable it at boot)
+    service: name=httpd state=started enabled=yes
+  handlers:
+    - name: restart apache
+      service: name=httpd state=restarted
           </code></pre>
         </section>
 
-        <section>
-          <h1>State</h1>
-          <p><code>terraform.tfstate</code></p>
-        </section>
 
-        <section>
-          <p><code>terraform destroy</code></p>
-        </section>
+		    <section>
+				<p>VPC</p>
+	          <pre><code class="hljs yaml" data-trim>
+- name: create vpc
+  ec2_vpc:
+    state: present
+    cidr_block: 10.0.0.0/16
+    resource_tags:
+      Name: ansible-cloud-workshop
+    internet_gateway: true
+    subnets: # 	...
+    route_tables:
+    - subnets: # ...
+      routes: # ...
+  register: vpc
+	          </code></pre>
+	        </section>
 
-        <section>
-          <h1>Hva bruker man Terraform til?</h1>
-        </section>
+		    <section>
+				<p>SSH-nøkkel</p>
+	          <pre><code class="hljs yaml" data-trim>
+- name: create ec2 key
+  ec2_key:
+    aws_access_key: "{{ aws_access_key }}"
+    aws_secret_key: "{{ aws_secret_key }}"
+    region: eu-central-1
+    name: Min_nøkkel
+    key_material: "{{ item }}"
+  with_file: id_rsa.pub
+	          </code></pre>
+	        </section>
 
-        <section>
-          <h1>Dokumentasjonen er bra!</h1>
-        </section>
 
-        <section>
-          <h2>Provider</h2>
-          <pre><code class="hljs nginx" data-trim>
-provider "aws" {
-    region = "eu-central-1"
-}
-          </code></pre>
-        </section>
+		    <section>
+				<p>Sikkerhetsgruppe</p>
+	          <pre><code class="hljs yaml" data-trim>
+ - name: create load my super secure security group
+   ec2_group:
+     vpc_id: "{{ vpc.vpc_id }}"
+     name: Min_sikkerhetsgruppe
+     description: Åpner for HTTP-trafikk til lastbalanserer
+     rules:
+     - proto: tcp
+       from_port: 80
+       to_port: 80
+       cidr_ip: 0.0.0.0/0
+   register: load_balancer_group
+	          </code></pre>
+	        </section>
 
-        <section>
-          <h2>Resources</h2>
-          <pre><code class="hljs nginx" data-trim>
-resource "aws_vpc" "main" {
-    cidr_block = "10.0.0.0/16"
-    tags {
-        Name = "stian"
-    }
-}
-          </code></pre>
-        </section>
 
-        <section>
-          <h2>Variabler</h2>
-          <pre><code class="hljs nginx" data-trim>
-resource "aws_vpc" "main" {
-    cidr_block = "10.0.0.0/16"
-    tags {
-        Name = "stian"
-    }
-}
 
-resource "aws_internet_gateway" "gw" {
-    vpc_id = "${aws_vpc.main.id}"
-}
-          </code></pre>
-        </section>
 
-        <section>
-          <h2>Funksjoner</h2>
-          <pre><code class="hljs nginx" data-trim>
-resource "aws_key_pair" "key" {
-    key_name = "stian_key"
-    public_key = "${file("terrform-workshop.pub")}"
-}
-          </code></pre>
-        </section>
+		    <section>
+				<p>Lastbalanserer</p>
+	          <pre><code class="hljs yaml" data-trim>
+- name: configure load balancer
+  ec2_elb_lb:
+    security_group_names:
+    - Min_sikkerhetsgruppe
+    state: present
+    name: Min_lastbalanserer
+    health_check:
+      ping_path: "/healthcheck.txt"
+      # ...
+    subnets:
+    - "{{ vpc.subnets[0].id }}"
+    - "{{ vpc.subnets[1].id }}"
+    listeners:
+    - protocol: http
+      load_balancer_port: 80
+      instance_port: 80
+	          </code></pre>
+	        </section>
 
-        <section>
-          <h2>Moduler</h2>
-          <pre><code class="hljs nginx" data-trim>
-module "appservers" {
-    source = "./appservers"
-    vpc_id = "${aws_vpc.main.id}"
-}
-          </code></pre>
 
-          <p>Registrer modulen</p>
+		    <section>
+				<p>Jump server</p>
+	          <pre><code class="hljs yaml" data-trim>
+- name: create jump server
+  ec2:
+    id: Min_unike_id
+    key_name: Min_nøkkel
+    instance_type: t2.micro
+    image: ami-f9619996
+    group: Min_ssh_sikkerhetsgruppe
+    count: 1
+    vpc_subnet_id: "{{ vpc.subnets[0].id }}"
+    assign_public_ip: yes
+    instance_tags:
+      Name: Min_jump_server
+	          </code></pre>
+	        </section>
 
-          <pre><code class="hljs sh" data-trim>
-$ terraform get
-          </code></pre>
-        </section>
+		    <section>
+				<p>Launch configuration</p>
+	          <pre><code class="hljs yaml" data-trim>
+- name: configure launch configuration for autoscaling group
+  ec2_lc:
+    name: Min_launch_config
+    image_id: ami-f9619996
+    instance_type: t2.micro
+    state: present
+    user_data: "{{ lookup('file', 'startup.sh') }}"
+    assign_public_ip: yes
+    security_groups:
+    - "{{ webservice_group.group_id }}"
+	          </code></pre>
+	        </section>
 
-        <section>
-          <h2>Moduler</h2>
-          <p>I fila <code>appservers/main.tf</code></p>
 
-          <pre><code class="hljs nginx" data-trim>
-variable "vpc_id" {}
+		    <section>
+				<p>Autoscaling group</p>
+	          <pre><code class="hljs yaml" data-trim>
+- name: create autoscaling group
+  ec2_asg:
+    name: ansible-cloud-workshop-ag
+    load_balancers:
+    - Min_lastbalanserer
+    availability_zones:
+    - eu-central-1a
+    - eu-central-1b
+    launch_config_name: Min_launch_config
+    min_size: 1
+    max_size: 3
+    desired_capacity: 2
+    vpc_zone_identifier:
+    - "{{ vpc.subnets[0].id }}"
+    - "{{ vpc.subnets[1].id }}"
+	          </code></pre>
+	        </section>
 
-resource "aws_security_group" "lb" {
-    vpc_id = "${var.vpc_id}"
-    ingress {
-        ...
-    }
-    egress {
-        ...
-    }
-}
-          </code></pre>
-        </section>
+		    <section>
+				https://github.com/stianlik/ansible-aws-workshop
+	        </section>
 
-        <section>
-          <h2>Moduler</h2>
-          <pre><code class="hljs nginx" data-trim>
-output "lb" {
-    value = "${aws_elb.lb.dns_name}"
-}
-          </code></pre>
-        </section>
-
-        <section>
-          <h2>Output</h2>
-          <pre><code class="hljs nginx" data-trim>
-output "lb" {
-    value = "${module.appservers.lb}"
-}
-          </code></pre>
-        </section>
-
-        <section>
-          <h2>Provisioners</h2>
-          <pre><code class="hljs nginx" data-trim>
- resource "aws_instance" "web" {
-    ...
-    provisioner "remote-exec" {
-        inline = [
-        "puppet apply",
-        "consul join ${aws_instance.web.private_ip}"
-        ]
-    }
-}         </code></pre>
-        </section>
-
+				</div>
 			</div>
-		</div>
-
 		<script src="lib/js/head.min.js"></script>
 		<script src="js/reveal.js"></script>
 
