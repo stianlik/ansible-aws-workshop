@@ -55,7 +55,7 @@ Ansible bruker playbooks til å spesifisere konfigurasjon, utrulling og orkestre
 
 Sjekk at playbook fungerer ved å kjøre `ansible-playbook playbook.yml`.
 
-## Oppgave 3: VPC
+## Oppgave 2: VPC
 
 Vi begynner med å lage en [VPC i Ansible](http://docs.ansible.com/ansible/ec2_vpc_module.html).
 Bruk `10.0.0.0/16` som `cidr_block`, og tag med `ansible-workshop` som `Name`.
@@ -90,7 +90,7 @@ sikkerhetsgruppene. Id-en kan hentes ut med synaksen `"{{ aws_vpc.vpc_id }}"` ([
 er registrert med `register: aws_vpc`. Se [Variables](http://docs.ansible.com/ansible/playbooks_variables.html#registered-variables)
 for mer informasjon.
 
-## Oppgave 4: Sett opp subnet
+## Oppgave 3: Sett opp subnet
 
 Nå skal vi sette opp to [subnet i
 VPC-en](http://docs.ansible.com/ansible/ec2_vpc_subnet_module.htm) vår.
@@ -99,13 +99,13 @@ subnet bruke `cidr_block` `10.0.1.0/24` og det andre bruke `10.0.2.0/24`.
 
 For at maskiner på subnettet skal kunne koble seg til Internett må man lage en [rutingtabell](http://docs.ansible.com/ansible/ec2_vpc_route_table_module.html), og assosiere tabellen med subnettet. Opprett en rute `0.0.0.0/0` til internet gatewayen.
 
-## Oppgave 5
+## Oppgave 4
 
 Nå skal vi sette opp to webservere og en lastbalanserer til å serve innholdet
 ut på Internett. Istedenfor å kjøre opp serverene manuelt, så lager vi en
 autoscalinggroup for serverene.
 
-### Oppgave 5.1: Lastbalanserer
+### Oppgave 4.1: Lastbalanserer
 
 For at lastbalanserer skal være tilgjengelig på nett, trenger den en [sikkerhetsgruppe](http://docs.ansible.com/ansible/ec2_group_module.html) med
 åpning inn på port `80` med TCP mot alle IP-adresser (`0.0.0.0/0`).
@@ -130,7 +130,7 @@ vi definerte i den tidligere oppgaven. Huske å definere
 Kjør `ansible-playbook playbook.yml -vvv` for å informasjon om resultatet. Prøv å gå på URL-en i browseren. Siden vi ikke har noen app som kjører skal du
 få en helt blank side, som returnerer 503 Service Unavailable.
 
-### Oppgave 5.2: Jump server
+### Oppgave 4.2: Jump server
 
 Siden vi har lyst til å logge inn på serverene for å sjekke at alt kom riktig
 opp, må vi lage et [Key
@@ -155,7 +155,7 @@ lastbalansereren uten å måtte oppgi IP.
 
 Husk å spesifisere VPC-ID på den nye sikkerhetsgruppen.
 
-### Oppgave 5.3: Launch configuration
+### Oppgave 4.3: Launch configuration
 
 An autoscaling group (AG) trenger en [Launch
 Configuration](http://docs.ansible.com/ansible/ec2_lc_module.html)
@@ -170,7 +170,7 @@ kommer opp. Les inn innholdet fra `startup.sh` ved hjelp av
 *Merk at launch configuration ikke kan endres. For å endre en eksisterende konfigurasjon
 må det opprettes en ny launch configuration.*
 
-### Oppgave 5.4: Auto-scaling group
+### Oppgave 4.4: Auto-scaling group
 
 Helt til slutt skal vi lage en [auto-scaling
 group](http://docs.ansible.com/ansible/ec2_asg_module.html)
