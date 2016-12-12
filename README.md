@@ -70,7 +70,7 @@ Bruk `10.0.0.0/16` som `cidr_block`, og tag med `ansible-workshop` som `Name`.
         cidr_block: 10.0.0.0/16
         resource_tags:
           Name: ansible-workshop
-  register: vpc
+    register: vpc
 ```
 
 For å sjekke hvilke endringer Ansible har tenkt til å gjøre, kjør [`ansible-playbook
