@@ -41,7 +41,7 @@ Ansible bruker [boto](http://boto.cloudhackers.com/en/latest/boto_config_tut.htm
     aws_access_key_id = <your_access_key_here>
     aws_secret_access_key = <your_secret_key_here>
 
-## Oppgave 1: Playbook
+## Oppgave 2: Playbook
 
 Ansible bruker playbooks til å spesifisere konfigurasjon, utrulling og orkestrering. Opprett en ny [playbook](http://docs.ansible.com/ansible/playbooks.html) med filnavn `playbook.yml` og følgende innhold:
 
