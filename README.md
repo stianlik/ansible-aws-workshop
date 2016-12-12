@@ -134,7 +134,7 @@ få en helt blank side, som returnerer 503 Service Unavailable.
 
 Siden vi har lyst til å logge inn på serverene for å sjekke at alt kom riktig
 opp, må vi lage et [Key
-Pair](https://www.terraform.io/docs/providers/aws/r/key_pair.html) med kommandoen
+Pair](http://docs.ansible.com/ansible/ec2_key_module.html) med kommandoen
 `ssh-keygen -f id_rsa`. Innholdet i `id_rsa.pub` skal da
 legges inn i feltet `key_material` i [ec2](http://docs.ansible.com/ansible/ec2_module.html)-modulen. Man kan enten kopiere
 innholdet manuelt, eller bruke
